@@ -6,64 +6,219 @@
 <div class="container mt-4">
     <h1 class="text-center">Market</h1>
 
-    {% if messages %}
-        <div>
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
+    <div class="row mt-3">
+        <div class="col-md-6">
+            <input type="text" id="searchInput" class="form-control" placeholder="Search by symbol or name...">
         </div>
-    {% endif %}
-
-    <div class="text-end">
-        <button class="btn btn-primary mb-3" onclick="updatePrices()">Update Prices</button>
+        <div class="col-md-6">
+            <select id="sectorFilter" class="form-select">
+                <option value="">All Sectors</option>
+                {% for sector in sectors %}
+                    <option value="{{ sector }}">{{ sector }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </div>
-    <table class="table table-hover table-bordered">
-        <thead class="table-dark">
-            <tr>
-                <th>Symbol</th>
-                <th>Name</th>
-                <th>Price</th>
-                <th>Sector</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for stock in stocks %}
-                <tr id="stock-{{ stock.symbol }}">
-                    <td>{{ stock.symbol }}</td>
-                    <td>{{ stock.name }}</td>
-                    <td class="price">${{ stock.price }}</td>
-                    <td>{{ stock.sector }}</td>
-                    <td>
-                        <form method="post" action="{% url 'buy_stock' stock.symbol %}">
-                            {% csrf_token %}
-                            <input type="number" name="quantity" class="form-control d-inline w-50" placeholder="Qty" required>
-                            <button type="submit" class="btn btn-success">Buy</button>
-                        </form>
-                    </td>
+
+    <div class="mt-3">
+        <table class="table table-hover table-bordered">
+            <thead class="table-dark">
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th>Sector</th>
+                    <th>History</th>
+                    <th>Action</th>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+            </thead>
+            <tbody id="stockTableBody">
+                {% for stock in stocks %}
+                    <tr data-symbol="{{ stock.symbol }}" data-name="{{ stock.name }}" data-sector="{{ stock.sector }}">
+                        <td>{{ stock.symbol }}</td>
+                        <td>{{ stock.name }}</td>
+                        <td class="price">${{ stock.price }}</td>
+                        <td>{{ stock.sector }}</td>
+                        <td>
+                            <canvas id="chart-{{ stock.symbol }}" width="200" height="100"></canvas>
+                        </td>
+                        <td>
+                            <form method="post" action="{% url 'buy_stock' stock.symbol %}">
+                                {% csrf_token %}
+                                <input type="number" name="quantity" class="form-control d-inline w-50" placeholder="Qty" required>
+                                <button type="submit" class="btn btn-success">Buy</button>
+                            </form>
+                            <button class="btn btn-info mt-2" onclick="showDetails('{{ stock.symbol }}')">Details</button>
+                            <button 
+                                class="btn btn-warning mt-2 favorite-btn" 
+                                data-symbol="{{ stock.symbol }}" 
+                                onclick="toggleFavorite('{{ stock.symbol }}')">
+                                {% if stock.symbol in user_favorites %}Unfavorite{% else %}Favorite{% endif %}
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="stockDetailsModal" class="modal fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 id="stockDetailsTitle" class="modal-title"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div id="stockDetailsBody" class="modal-body"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    async function updatePrices() {
-        const response = await fetch("{% url 'market' %}", {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": "{{ csrf_token }}"
+    document.addEventListener('DOMContentLoaded', () => {
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const stocksData = {{ stocks_json|safe }};
+    
+        // Initialize charts for historical stock data
+        stocksData.forEach(stock => {
+            const canvas = document.getElementById(`chart-${stock.symbol}`);
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: stock.history.dates,
+                        datasets: [{
+                            label: 'Price',
+                            data: stock.history.prices,
+                            borderColor: 'rgba(0, 0, 0, 1)',
+                            borderWidth: 2,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Date' } },
+                            y: { title: { display: true, text: 'Price ($)' } }
+                        }
+                    }
+                });
             }
         });
-        if (response.ok) {
-            alert("Prices updated successfully!");
-            location.reload();
-        } else {
-            alert("Failed to update prices.");
+    
+        // Filter stocks by search and sector
+        const searchInput = document.getElementById('searchInput');
+        const sectorFilter = document.getElementById('sectorFilter');
+        const stockTableBody = document.getElementById('stockTableBody');
+    
+        function filterStocks() {
+            const searchValue = searchInput.value.toLowerCase();
+            const sectorValue = sectorFilter.value;
+    
+            Array.from(stockTableBody.children).forEach(row => {
+                const symbol = row.getAttribute('data-symbol').toLowerCase();
+                const name = row.getAttribute('data-name').toLowerCase();
+                const sector = row.getAttribute('data-sector');
+    
+                const matchesSearch = symbol.includes(searchValue) || name.includes(searchValue);
+                const matchesSector = !sectorValue || sector === sectorValue;
+    
+                row.style.display = matchesSearch && matchesSector ? '' : 'none';
+            });
         }
-    }
-</script>
+    
+        searchInput.addEventListener('input', filterStocks);
+        sectorFilter.addEventListener('change', filterStocks);
+    
+        // Show stock details in a modal
+        async function showDetails(symbol) {
+            try {
+                const response = await fetch(`/stock-details/${symbol}/`);
+                const data = await response.json();
+    
+                if (response.ok) {
+                    document.getElementById('stockDetailsTitle').innerText = `${symbol} - ${data.name}`;
+                    document.getElementById('stockDetailsBody').innerHTML = `
+                        <p>Sector: ${data.sector}</p>
+                        <p>Market Cap: $${data.market_cap}</p>
+                        <p>52-Week High: $${data.high_52_week}</p>
+                        <p>52-Week Low: $${data.low_52_week}</p>
+                        <p>Daily Volume: ${data.volume}</p>
+                    `;
+                    const modal = new bootstrap.Modal(document.getElementById('stockDetailsModal'));
+                    modal.show();
+                } else {
+                    alert(data.error || "Failed to fetch stock details.");
+                }
+            } catch (error) {
+                alert("Error fetching stock details.");
+            }
+        }
+    
+        // Toggle favorite status
+        async function toggleFavorite(symbol) {
+            try {
+                const response = await fetch(`/toggle-favorite/${symbol}/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                    },
+                });
+                const data = await response.json();
+    
+                if (response.ok) {
+                    alert(data.success);
+    
+                    // Update button text and style
+                    const button = document.querySelector(`button.favorite-btn[data-symbol="${symbol}"]`);
+                    if (button) {
+                        const isFavorite = button.innerText === 'Favorite';
+                        button.innerText = isFavorite ? 'Unfavorite' : 'Favorite';
+                        button.classList.toggle('btn-warning', isFavorite);
+                        button.classList.toggle('btn-success', !isFavorite);
+                    }
+    
+                    // Update Favorites page dynamically if it's loaded
+                    const favoritesTableBody = document.getElementById('favoritesTableBody');
+                    if (favoritesTableBody) {
+                        const row = document.querySelector(`#favoritesTableBody tr[data-symbol="${symbol}"]`);
+                        if (data.success.includes('removed')) {
+                            if (row) row.remove();
+                        } else {
+                            if (!row) {
+                                // Add the stock back to the Favorites table
+                                const newRow = document.createElement('tr');
+                                newRow.setAttribute('data-symbol', symbol);
+                                newRow.innerHTML = `
+                                    <td>${symbol}</td>
+                                    <td>${data.name}</td>
+                                    <td class="price">$${data.price}</td>
+                                    <td>${data.sector}</td>
+                                    <td>
+                                        <button class="btn btn-warning" onclick="toggleFavorite('${symbol}')">Unfavorite</button>
+                                    </td>
+                                `;
+                                favoritesTableBody.appendChild(newRow);
+                            }
+                        }
+                    }
+                } else {
+                    alert(data.error || "Failed to toggle favorite.");
+                }
+            } catch (error) {
+                alert("Error toggling favorite.");
+            }
+        }
+    
+        window.showDetails = showDetails;
+        window.toggleFavorite = toggleFavorite;
+    });
+    </script>
+    
+
 {% endblock %}

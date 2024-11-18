@@ -1,6 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils.timezone import now
 
 
 class UserProfile(models.Model):
@@ -41,5 +40,10 @@ class PendingSell(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Pending sell for {self.stock.symbol} at ${self.target_price} by {self.user.user.username}"
+        return f"Pending sell for {self.quantity} shares of {self.stock.symbol} at ${self.target_price} by {self.user.user.username}"
+class Favorite(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
 
+    def __str__(self):
+        return f"{self.user.user.username} - {self.stock.symbol}"

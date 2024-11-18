@@ -1,0 +1,93 @@
+{% extends "simulator/base.html" %}
+
+{% block title %}Favorites{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="text-center">Favorites</h1>
+
+    <div class="mt-3">
+        {% if favorites %}
+            <form>
+                {% csrf_token %}
+                <table class="table table-hover table-bordered">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Price</th>
+                            <th>Sector</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="favoritesTableBody">
+                        {% for favorite in favorites %}
+                            <tr data-symbol="{{ favorite.stock.symbol }}">
+                                <td>{{ favorite.stock.symbol }}</td>
+                                <td>{{ favorite.stock.name }}</td>
+                                <td class="price">${{ favorite.stock.price }}</td>
+                                <td>{{ favorite.stock.sector }}</td>
+                                <td>
+                                    <button 
+                                        type="button" 
+                                        class="btn btn-warning" 
+                                        onclick="toggleFavorite('{{ favorite.stock.symbol }}')">
+                                        Unfavorite
+                                    </button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </form>
+        {% else %}
+            <p class="text-center mt-5">No favorites added yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    async function toggleFavorite(symbol) {
+        try {
+            const response = await fetch(`/toggle-favorite/${symbol}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'Content-Type': 'application/json', 
+                },
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(data.success);
+
+                const row = document.querySelector(`[data-symbol="${symbol}"]`);
+                if (data.success.includes('removed')) {
+                    if (row) row.remove();
+
+                    const tableBody = document.getElementById('favoritesTableBody');
+                    if (!tableBody.children.length) {
+                        const container = document.querySelector('.container');
+                        container.innerHTML = `
+                            <h1 class="text-center">Favorites</h1>
+                            <p class="text-center mt-5">No favorites added yet.</p>
+                        `;
+                    }
+                }
+            } else {
+                alert(data.error || 'Failed to toggle favorite.');
+            }
+        } catch (error) {
+            alert('Error toggling favorite.');
+            console.error(error);
+        }
+    }
+
+    window.toggleFavorite = toggleFavorite;
+});
+</script>
+{% endblock %}

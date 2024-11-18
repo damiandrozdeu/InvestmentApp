@@ -8,19 +8,18 @@
 
     {% if messages %}
         {% for message in messages %}
-            <div class="alert {{ message.tags }} text-center" role="alert">
+            <div class="alert {{ message.tags }} text-center alert-dismissible fade show" role="alert">
                 {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         {% endfor %}
     {% endif %}
 
-    <!-- Balance Section -->
     <div class="card p-3 mt-3">
         <h2>Balance:</h2>
         <p class="fs-4 text-success">$ {{ profile.balance }}</p>
     </div>
 
-    <!-- Fund Management Section -->
     <div class="mt-4">
         <h2>Fund Management</h2>
         <div class="row">
@@ -49,7 +48,6 @@
         </div>
     </div>
 
-    <!-- Holdings Table -->
     <div class="mt-4">
         <h2>Holdings</h2>
         <table class="table table-striped table-bordered mt-3">
@@ -57,6 +55,7 @@
                 <tr>
                     <th>Symbol</th>
                     <th>Quantity</th>
+                    <th>Price per Stock</th>
                     <th>Total Value</th>
                     <th>Actions</th>
                 </tr>
@@ -66,9 +65,10 @@
                     <tr>
                         <td>{{ symbol }}</td>
                         <td>{{ info.quantity }}</td>
+                        <td>${{ info.price_per_stock|floatformat:2 }}</td>
                         <td>${{ info.total_value|floatformat:2 }}</td>
                         <td>
-                            <button class="btn btn-danger btn-sm" onclick="showSellModal('{{ symbol }}')">Sell Now</button>
+                            <button class="btn btn-danger btn-sm" onclick="showSellNowModal('{{ symbol }}', {{ info.quantity }}, {{ info.total_value }})">Sell Now</button>
                             <button class="btn btn-warning btn-sm" onclick="showWaitSellModal('{{ symbol }}')">Wait and Sell</button>
                         </td>
                     </tr>
@@ -77,32 +77,34 @@
         </table>
     </div>
 
-    <!-- Pending Sells Table -->
     <div class="mt-4">
         <h2>Pending Sells</h2>
         <table class="table table-striped table-bordered mt-3">
             <thead class="table-dark">
                 <tr>
                     <th>Symbol</th>
-                    <th>Current Price</th>
                     <th>Target Price</th>
+                    <th>Current Price</th>
                     <th>Time Elapsed (hours)</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for sell in pending_sells %}
                     <tr>
                         <td>{{ sell.stock.symbol }}</td>
-                        <td>${{ sell.stock.price|floatformat:2 }}</td>
                         <td>${{ sell.target_price|floatformat:2 }}</td>
+                        <td>${{ sell.stock.price|floatformat:2 }}</td>
                         <td>{{ sell.time_elapsed }}</td>
+                        <td>
+                            <button class="btn btn-danger btn-sm" onclick="cancelPendingSell('{{ sell.id }}')">Cancel</button>
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <!-- Transactions Table -->
     <div class="mt-4">
         <h2>Transactions</h2>
         <table class="table table-striped table-bordered mt-3">
@@ -128,45 +130,160 @@
             </tbody>
         </table>
     </div>
+
+    <div id="sellNowModal" class="modal fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Sell Now</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="sellNowForm">
+                        {% csrf_token %}
+                        <input type="hidden" id="sellNowSymbol">
+                        <label for="sellQuantity">Quantity</label>
+                        <input type="number" step="1" min="1" class="form-control mb-3" id="sellQuantity" placeholder="Enter quantity" required>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="submitSellNow()">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="waitSellModal" class="modal fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Wait and Sell</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="waitSellForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="symbol" id="waitSellSymbol">
+                        <label for="targetPrice">Target Price</label>
+                        <input type="number" step="0.01" class="form-control" name="target_price" id="targetPrice" required>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="submitWaitSell()">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
-    function showSellModal(symbol) {
-        // Implement the sell modal logic here
-        const modalContent = `
-            <div id="sellModal" class="modal fade" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Sell {{ symbol }}</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <form id="sellForm">
-                                {% csrf_token %}
-                                <input type="hidden" name="symbol" value="${symbol}">
-                                <label for="quantity">Quantity:</label>
-                                <input type="number" class="form-control" name="quantity" id="quantity" required>
-                                <label for="value">Value:</label>
-                                <input type="number" class="form-control" name="value" id="value" disabled>
-                            </form>
-                        </div>
-                        <div class="modal-footer">
-                            <button class="btn btn-primary" onclick="submitSell()">Confirm</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML("beforeend", modalContent);
-        const modal = new bootstrap.Modal(document.getElementById("sellModal"));
+    let currentPrice = 0;
+
+    function showSellNowModal(symbol, quantity, value) {
+        currentPrice = value / quantity;
+        document.getElementById('sellNowSymbol').value = symbol;
+        document.getElementById('sellQuantity').value = '';
+        const modal = new bootstrap.Modal(document.getElementById('sellNowModal'));
         modal.show();
+    }
+
+    async function submitSellNow() {
+        const symbol = document.getElementById('sellNowSymbol').value;
+        const quantity = parseInt(document.getElementById('sellQuantity').value);
+
+        if (!quantity || quantity <= 0) {
+            alert("Please enter a valid quantity.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`/sell-now/${symbol}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ quantity })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(data.success);
+                location.reload();
+            } else {
+                alert(data.error || "An error occurred while selling the stock.");
+            }
+        } catch (error) {
+            console.error("Error during Sell Now request:", error);
+            alert("Failed to sell the stock. Please try again.");
+        }
     }
 
     function showWaitSellModal(symbol) {
         document.getElementById('waitSellSymbol').value = symbol;
         const modal = new bootstrap.Modal(document.getElementById('waitSellModal'));
         modal.show();
+    }
+
+    async function submitWaitSell() {
+        const symbol = document.getElementById('waitSellSymbol').value;
+        const targetPrice = parseFloat(document.getElementById('targetPrice').value);
+
+        if (!targetPrice || targetPrice <= 0) {
+            alert("Please enter a valid target price.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`/wait-and-sell/${symbol}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ target_price: targetPrice })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(data.success);
+                location.reload();
+            } else {
+                alert(data.error || "An error occurred while setting the target price.");
+            }
+        } catch (error) {
+            console.error("Error during Wait and Sell request:", error);
+            alert("Failed to set the target price. Please try again.");
+        }
+    }
+
+    async function cancelPendingSell(sellId) {
+        if (!confirm("Are you sure you want to cancel this pending sell?")) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/cancel-pending-sell/${sellId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (response.ok) {
+                alert("Pending sell has been canceled.");
+                location.reload();
+            } else {
+                const data = await response.json();
+                alert(data.error || "Failed to cancel the pending sell.");
+            }
+        } catch (error) {
+            console.error("Error during cancel pending sell request:", error);
+            alert("Failed to cancel the pending sell. Please try again.");
+        }
     }
 </script>
 {% endblock %}
