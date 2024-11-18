@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-
+from django.utils.timezone import now
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -9,16 +9,29 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} - Balance: {self.balance}"
 
-
 class Stock(models.Model):
     symbol = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     market_cap = models.BigIntegerField(null=True, blank=True)
     sector = models.CharField(max_length=100, null=True, blank=True)
+    last_updated = models.DateTimeField(default=now)
 
     def __str__(self):
         return f"{self.symbol} - {self.name}"
+
+class StockHistory(models.Model):
+    stock = models.ForeignKey(Stock, related_name='history', on_delete=models.CASCADE)
+    date = models.DateField()
+    close_price = models.DecimalField(max_digits=10, decimal_places=2)
+    volume = models.BigIntegerField()
+
+    class Meta:
+        unique_together = ('stock', 'date')  # Prevent duplicate records for the same stock and date
+
+    def __str__(self):
+        return f"{self.stock.symbol} - {self.date}: {self.close_price}"
+
 
 
 class Transaction(models.Model):

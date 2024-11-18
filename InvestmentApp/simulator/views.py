@@ -5,15 +5,18 @@ from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError
 from django.contrib import messages
-from .models import UserProfile, Stock, Transaction, PendingSell, Favorite
+from .models import UserProfile, Stock, Transaction, PendingSell, Favorite, StockHistory
 from decimal import Decimal
 from django.utils.timezone import now
 from django.db.models import Q
 import yfinance as yf
 import json
 from django.views.decorators.csrf import csrf_exempt
+from datetime import datetime, timedelta
+from django.db import models
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required, user_passes_test
 
-# Authentication views
 def login_view(request):
     if request.method == "POST":
         username = request.POST["username"]
@@ -55,7 +58,6 @@ def register(request):
         return HttpResponseRedirect(reverse("portfolio"))
     return render(request, "simulator/register.html")
 
-# Portfolio view
 @login_required
 def portfolio_view(request):
     profile = UserProfile.objects.get(user=request.user)
@@ -114,7 +116,6 @@ def portfolio_view(request):
     })
 
 
-# Stock buy/sell views
 @login_required
 def buy_stock(request, symbol):
     if request.method == 'POST':
@@ -203,7 +204,7 @@ def cancel_pending_sell(request, sell_id):
     return JsonResponse({'error': "Invalid request method."}, status=405)
 
 
-# Market views
+
 def market_view(request):
     profile = None
     user_favorites = []
@@ -221,51 +222,55 @@ def market_view(request):
     if sector:
         stocks = stocks.filter(sector=sector)
 
-    stocks_json = []
+    stocks_data = []
     for stock in stocks:
-        try:
-            stock_data = yf.Ticker(stock.symbol)
-            hist = stock_data.history(period="5d")  
+        history = stock.history.order_by('date')[:30]  
+        dates = [h.date.strftime('%Y-%m-%d') for h in history] 
+        prices = [float(h.close_price) for h in history]
 
-            if not hist.empty:
-                dates = hist.index.strftime('%Y-%m-%d').tolist()  
-                prices = hist['Close'].fillna(0).tolist() 
-
-                stocks_json.append({
-                    "symbol": stock.symbol,
-                    "history": {
-                        "dates": dates,
-                        "prices": prices
-                    }
-                })
-        except Exception as e:
-            print(f"Error fetching history for {stock.symbol}: {e}")
+        stocks_data.append({
+            "symbol": stock.symbol,
+            "name": stock.name,
+            "price": str(stock.price),
+            "sector": stock.sector,
+            "history": {
+                "dates": dates,
+                "prices": prices,
+            },
+        })
 
     return render(request, 'simulator/market.html', {
         'stocks': stocks,
         'sectors': sectors,
-        'stocks_json': json.dumps(stocks_json),
+        'stocks_json': json.dumps(stocks_data),
         'user_favorites': list(user_favorites),
     })
+
 
 
 @login_required
 def stock_details(request, symbol):
     try:
         stock = get_object_or_404(Stock, symbol=symbol)
-        stock_data = yf.Ticker(symbol).info
-
         data = {
             'name': stock.name,
             'sector': stock.sector,
-            'market_cap': stock_data.get('marketCap'),
-            'high_52_week': stock_data.get('fiftyTwoWeekHigh'),
-            'low_52_week': stock_data.get('fiftyTwoWeekLow'),
-            'volume': stock_data.get('volume')
+            'market_cap': stock.market_cap, 
+            'current_price': str(stock.price),
+            'last_updated': stock.last_updated.strftime('%Y-%m-%d %H:%M:%S'),
         }
+        history = stock.history.all()
+        if history.exists():
+            data['high_52_week'] = str(history.aggregate(models.Max('close_price'))['close_price__max'])
+            data['low_52_week'] = str(history.aggregate(models.Min('close_price'))['close_price__min'])
+            data['volume'] = history.latest('date').volume
+        else:
+            data['high_52_week'] = data['low_52_week'] = data['volume'] = None
+
         return JsonResponse(data)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
 
 
 @csrf_exempt
@@ -290,3 +295,77 @@ def favorites_view(request):
     return render(request, 'simulator/favorites.html', {
         'favorites': favorites,
     })
+@login_required
+def update_stock_prices(request):
+    if not request.user.is_staff:  
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    stocks = Stock.objects.all()
+    updated_stocks = []
+    for stock in stocks:
+        try:
+            
+            stock_data = yf.Ticker(stock.symbol)  
+            current_price = stock_data.info['currentPrice'] 
+            stock.price = current_price
+            stock.last_updated = now()
+            stock.save()
+            updated_stocks.append(stock.symbol)
+        except Exception as e:
+            print(f"Error updating {stock.symbol}: {e}")
+
+    return JsonResponse({'updated_stocks': updated_stocks})
+
+
+def update_stock_prices():
+    stocks = Stock.objects.all()
+    updated_stocks = []
+
+    for stock in stocks:
+        try:
+            stock_data = yf.Ticker(stock.symbol)
+
+            current_price = stock_data.info.get('currentPrice')
+            if current_price:
+                stock.price = current_price
+                stock.last_updated = now()
+                stock.save()
+
+            StockHistory.objects.filter(stock=stock).delete()
+
+            start_date = (datetime.now() - timedelta(days=30)).date()
+            end_date = datetime.now().date()
+
+            hist = stock_data.history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+
+            if not hist.empty:
+                for date, row in hist.iterrows():
+                    close_price = row.get('Close')
+                    volume = row.get('Volume', 0)
+
+                    if close_price is not None:
+                        StockHistory.objects.create(
+                            stock=stock,
+                            date=date,
+                            close_price=close_price,
+                            volume=volume
+                        )
+
+            updated_stocks.append(stock.symbol)
+            print(f"Updated {stock.symbol}")
+
+        except Exception as e:
+            print(f"Error updating {stock.symbol}: {e}")
+
+    return updated_stocks
+
+
+@login_required
+@user_passes_test(lambda u: u.is_staff) 
+def trigger_stock_update(request):
+    try:
+        updated_stocks = update_stock_prices()
+        return JsonResponse({'success': True, 'updated_stocks': updated_stocks})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+

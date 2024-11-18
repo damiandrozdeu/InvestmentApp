@@ -13,6 +13,9 @@ urlpatterns = [
     path('cancel-pending-sell/<int:sell_id>/', views.cancel_pending_sell, name='cancel_pending_sell'),
     path('stock-details/<str:symbol>/', views.stock_details, name='stock_details'),
     path('favorites/', views.favorites_view, name='favorites'),  
-    path('toggle-favorite/<str:symbol>/', views.toggle_favorite, name='toggle_favorite'),  
+    path('toggle-favorite/<str:symbol>/', views.toggle_favorite, name='toggle_favorite'),
+    path('stock-admin/update-stocks/', views.trigger_stock_update, name='update_stocks'),
+
+  
 
 ]

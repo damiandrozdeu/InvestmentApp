@@ -1,16 +1,16 @@
 {% extends "simulator/base.html" %}
-
+{% load static %}
 {% block title %}Market{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <h1 class="text-center">Market</h1>
 
-    <div class="row mt-3">
-        <div class="col-md-6">
+    <div class="row mt-3 g-2">
+        <div class="col-12 col-md-6">
             <input type="text" id="searchInput" class="form-control" placeholder="Search by symbol or name...">
         </div>
-        <div class="col-md-6">
+        <div class="col-12 col-md-6">
             <select id="sectorFilter" class="form-select">
                 <option value="">All Sectors</option>
                 {% for sector in sectors %}
@@ -20,16 +20,16 @@
         </div>
     </div>
 
-    <div class="mt-3">
+    <div class="table-responsive mt-3">
         <table class="table table-hover table-bordered">
             <thead class="table-dark">
                 <tr>
                     <th>Symbol</th>
                     <th>Name</th>
                     <th>Price</th>
-                    <th>Sector</th>
-                    <th>History</th>
-                    <th>Action</th>
+                    <th class="d-none d-md-table-cell">Sector</th>
+                    <th class="d-none d-md-table-cell">History</th>
+                    <th class="d-none d-md-table-cell">Action</th>
                 </tr>
             </thead>
             <tbody id="stockTableBody">
@@ -37,22 +37,19 @@
                     <tr data-symbol="{{ stock.symbol }}" data-name="{{ stock.name }}" data-sector="{{ stock.sector }}">
                         <td>{{ stock.symbol }}</td>
                         <td>{{ stock.name }}</td>
-                        <td class="price">${{ stock.price }}</td>
-                        <td>{{ stock.sector }}</td>
-                        <td>
+                        <td>${{ stock.price }}</td>
+                        <td class="d-none d-md-table-cell">{{ stock.sector }}</td>
+                        <td class="d-none d-md-table-cell">
                             <canvas id="chart-{{ stock.symbol }}" width="200" height="100"></canvas>
                         </td>
-                        <td>
+                        <td class="d-none d-md-table-cell">
                             <form method="post" action="{% url 'buy_stock' stock.symbol %}">
                                 {% csrf_token %}
-                                <input type="number" name="quantity" class="form-control d-inline w-50" placeholder="Qty" required>
-                                <button type="submit" class="btn btn-success">Buy</button>
+                                <input type="number" name="quantity" class="form-control d-inline w-50 mb-2" placeholder="Qty" required>
+                                <button type="submit" class="btn btn-success btn-sm">Buy</button>
                             </form>
-                            <button class="btn btn-info mt-2" onclick="showDetails('{{ stock.symbol }}')">Details</button>
-                            <button 
-                                class="btn btn-warning mt-2 favorite-btn" 
-                                data-symbol="{{ stock.symbol }}" 
-                                onclick="toggleFavorite('{{ stock.symbol }}')">
+                            <button class="btn btn-info btn-sm mt-2" onclick="showDetails('{{ stock.symbol }}')">Details</button>
+                            <button class="btn btn-warning btn-sm mt-2 favorite-btn" data-symbol="{{ stock.symbol }}" onclick="toggleFavorite('{{ stock.symbol }}')">
                                 {% if stock.symbol in user_favorites %}Unfavorite{% else %}Favorite{% endif %}
                             </button>
                         </td>
@@ -63,7 +60,7 @@
     </div>
 
     <div id="stockDetailsModal" class="modal fade" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 id="stockDetailsTitle" class="modal-title"></h5>
@@ -75,150 +72,9 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-        const stocksData = {{ stocks_json|safe }};
-    
-        // Initialize charts for historical stock data
-        stocksData.forEach(stock => {
-            const canvas = document.getElementById(`chart-${stock.symbol}`);
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: stock.history.dates,
-                        datasets: [{
-                            label: 'Price',
-                            data: stock.history.prices,
-                            borderColor: 'rgba(0, 0, 0, 1)',
-                            borderWidth: 2,
-                            fill: false
-                        }]
-                    },
-                    options: {
-                        plugins: {
-                            legend: { display: false }
-                        },
-                        scales: {
-                            x: { title: { display: true, text: 'Date' } },
-                            y: { title: { display: true, text: 'Price ($)' } }
-                        }
-                    }
-                });
-            }
-        });
-    
-        // Filter stocks by search and sector
-        const searchInput = document.getElementById('searchInput');
-        const sectorFilter = document.getElementById('sectorFilter');
-        const stockTableBody = document.getElementById('stockTableBody');
-    
-        function filterStocks() {
-            const searchValue = searchInput.value.toLowerCase();
-            const sectorValue = sectorFilter.value;
-    
-            Array.from(stockTableBody.children).forEach(row => {
-                const symbol = row.getAttribute('data-symbol').toLowerCase();
-                const name = row.getAttribute('data-name').toLowerCase();
-                const sector = row.getAttribute('data-sector');
-    
-                const matchesSearch = symbol.includes(searchValue) || name.includes(searchValue);
-                const matchesSector = !sectorValue || sector === sectorValue;
-    
-                row.style.display = matchesSearch && matchesSector ? '' : 'none';
-            });
-        }
-    
-        searchInput.addEventListener('input', filterStocks);
-        sectorFilter.addEventListener('change', filterStocks);
-    
-        // Show stock details in a modal
-        async function showDetails(symbol) {
-            try {
-                const response = await fetch(`/stock-details/${symbol}/`);
-                const data = await response.json();
-    
-                if (response.ok) {
-                    document.getElementById('stockDetailsTitle').innerText = `${symbol} - ${data.name}`;
-                    document.getElementById('stockDetailsBody').innerHTML = `
-                        <p>Sector: ${data.sector}</p>
-                        <p>Market Cap: $${data.market_cap}</p>
-                        <p>52-Week High: $${data.high_52_week}</p>
-                        <p>52-Week Low: $${data.low_52_week}</p>
-                        <p>Daily Volume: ${data.volume}</p>
-                    `;
-                    const modal = new bootstrap.Modal(document.getElementById('stockDetailsModal'));
-                    modal.show();
-                } else {
-                    alert(data.error || "Failed to fetch stock details.");
-                }
-            } catch (error) {
-                alert("Error fetching stock details.");
-            }
-        }
-    
-        // Toggle favorite status
-        async function toggleFavorite(symbol) {
-            try {
-                const response = await fetch(`/toggle-favorite/${symbol}/`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrftoken,
-                    },
-                });
-                const data = await response.json();
-    
-                if (response.ok) {
-                    alert(data.success);
-    
-                    // Update button text and style
-                    const button = document.querySelector(`button.favorite-btn[data-symbol="${symbol}"]`);
-                    if (button) {
-                        const isFavorite = button.innerText === 'Favorite';
-                        button.innerText = isFavorite ? 'Unfavorite' : 'Favorite';
-                        button.classList.toggle('btn-warning', isFavorite);
-                        button.classList.toggle('btn-success', !isFavorite);
-                    }
-    
-                    // Update Favorites page dynamically if it's loaded
-                    const favoritesTableBody = document.getElementById('favoritesTableBody');
-                    if (favoritesTableBody) {
-                        const row = document.querySelector(`#favoritesTableBody tr[data-symbol="${symbol}"]`);
-                        if (data.success.includes('removed')) {
-                            if (row) row.remove();
-                        } else {
-                            if (!row) {
-                                // Add the stock back to the Favorites table
-                                const newRow = document.createElement('tr');
-                                newRow.setAttribute('data-symbol', symbol);
-                                newRow.innerHTML = `
-                                    <td>${symbol}</td>
-                                    <td>${data.name}</td>
-                                    <td class="price">$${data.price}</td>
-                                    <td>${data.sector}</td>
-                                    <td>
-                                        <button class="btn btn-warning" onclick="toggleFavorite('${symbol}')">Unfavorite</button>
-                                    </td>
-                                `;
-                                favoritesTableBody.appendChild(newRow);
-                            }
-                        }
-                    }
-                } else {
-                    alert(data.error || "Failed to toggle favorite.");
-                }
-            } catch (error) {
-                alert("Error toggling favorite.");
-            }
-        }
-    
-        window.showDetails = showDetails;
-        window.toggleFavorite = toggleFavorite;
-    });
-    </script>
-    
+<div id="stocksData" style="display: none;">{{ stocks_json|safe }}</div>
+<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{% static 'js/market.js' %}"></script>
 {% endblock %}
