@@ -1,9 +1,172 @@
-<h1>Portfolio</h1>
-<p>Saldo: {{ profile.balance }}</p>
-<h2>Transakcje:</h2>
-<ul>
-    {% for transaction in transactions %}
-        <li>{{ transaction.stock.symbol }} - {{ transaction.quantity }} @ {{ transaction.price }}</li>
-    {% endfor %}
-</ul>
-<a href="{% url 'transaction' %}">Dodaj transakcję</a>
+{% extends "simulator/base.html" %}
+
+{% block title %}Portfolio{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="text-center">Portfolio</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {{ message.tags }} text-center" role="alert">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Balance Section -->
+    <div class="card p-3 mt-3">
+        <h2>Balance:</h2>
+        <p class="fs-4 text-success">$ {{ profile.balance }}</p>
+    </div>
+
+    <!-- Fund Management Section -->
+    <div class="mt-4">
+        <h2>Fund Management</h2>
+        <div class="row">
+            <div class="col-md-6">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_funds">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">$</span>
+                        <input type="number" step="0.01" name="amount" class="form-control" placeholder="Enter amount to add" required>
+                        <button class="btn btn-success" type="submit">Add Funds</button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="withdraw_funds">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">$</span>
+                        <input type="number" step="0.01" name="amount" class="form-control" placeholder="Enter amount to withdraw" required>
+                        <button class="btn btn-danger" type="submit">Withdraw Funds</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Holdings Table -->
+    <div class="mt-4">
+        <h2>Holdings</h2>
+        <table class="table table-striped table-bordered mt-3">
+            <thead class="table-dark">
+                <tr>
+                    <th>Symbol</th>
+                    <th>Quantity</th>
+                    <th>Total Value</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for symbol, info in holdings.items %}
+                    <tr>
+                        <td>{{ symbol }}</td>
+                        <td>{{ info.quantity }}</td>
+                        <td>${{ info.total_value|floatformat:2 }}</td>
+                        <td>
+                            <button class="btn btn-danger btn-sm" onclick="showSellModal('{{ symbol }}')">Sell Now</button>
+                            <button class="btn btn-warning btn-sm" onclick="showWaitSellModal('{{ symbol }}')">Wait and Sell</button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pending Sells Table -->
+    <div class="mt-4">
+        <h2>Pending Sells</h2>
+        <table class="table table-striped table-bordered mt-3">
+            <thead class="table-dark">
+                <tr>
+                    <th>Symbol</th>
+                    <th>Current Price</th>
+                    <th>Target Price</th>
+                    <th>Time Elapsed (hours)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sell in pending_sells %}
+                    <tr>
+                        <td>{{ sell.stock.symbol }}</td>
+                        <td>${{ sell.stock.price|floatformat:2 }}</td>
+                        <td>${{ sell.target_price|floatformat:2 }}</td>
+                        <td>{{ sell.time_elapsed }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Transactions Table -->
+    <div class="mt-4">
+        <h2>Transactions</h2>
+        <table class="table table-striped table-bordered mt-3">
+            <thead class="table-dark">
+                <tr>
+                    <th>Symbol</th>
+                    <th>Type</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for transaction in transactions %}
+                    <tr>
+                        <td>{{ transaction.stock.symbol }}</td>
+                        <td>{{ transaction.type }}</td>
+                        <td>{{ transaction.quantity }}</td>
+                        <td>${{ transaction.price|floatformat:2 }}</td>
+                        <td>{{ transaction.date }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function showSellModal(symbol) {
+        // Implement the sell modal logic here
+        const modalContent = `
+            <div id="sellModal" class="modal fade" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Sell {{ symbol }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="sellForm">
+                                {% csrf_token %}
+                                <input type="hidden" name="symbol" value="${symbol}">
+                                <label for="quantity">Quantity:</label>
+                                <input type="number" class="form-control" name="quantity" id="quantity" required>
+                                <label for="value">Value:</label>
+                                <input type="number" class="form-control" name="value" id="value" disabled>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-primary" onclick="submitSell()">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML("beforeend", modalContent);
+        const modal = new bootstrap.Modal(document.getElementById("sellModal"));
+        modal.show();
+    }
+
+    function showWaitSellModal(symbol) {
+        document.getElementById('waitSellSymbol').value = symbol;
+        const modal = new bootstrap.Modal(document.getElementById('waitSellModal'));
+        modal.show();
+    }
+</script>
+{% endblock %}

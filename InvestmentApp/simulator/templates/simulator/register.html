@@ -1,24 +1,41 @@
-<h2>Register</h2>
+{% extends "simulator/base.html" %}
 
-{% if message %}
-    <div>{{ message }}</div>
-{% endif %}
+{% block title %}Register{% endblock %}
 
-<form action="{% url 'register' %}" method="post">
-    {% csrf_token %}
-    <div class="form-group">
-        <input class="form-control" autofocus type="text" name="username" placeholder="Username">
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <h2 class="text-center">Register</h2>
+            {% if message %}
+                <div class="alert alert-danger" role="alert">
+                    {{ message }}
+                </div>
+            {% endif %}
+            <form action="{% url 'register' %}" method="post" class="mt-4">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input class="form-control" autofocus type="text" name="username" id="username" placeholder="Enter your username" required>
+                </div>
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email Address</label>
+                    <input class="form-control" type="email" name="email" id="email" placeholder="Enter your email" required>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input class="form-control" type="password" name="password" id="password" placeholder="Enter your password" required>
+                </div>
+                <div class="mb-3">
+                    <label for="confirmation" class="form-label">Confirm Password</label>
+                    <input class="form-control" type="password" name="confirmation" id="confirmation" placeholder="Confirm your password" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Register</button>
+            </form>
+            <p class="text-center mt-3">
+                Already have an account? <a href="{% url 'login' %}">Log In here.</a>
+            </p>
+        </div>
     </div>
-    <div class="form-group">
-        <input class="form-control" type="email" name="email" placeholder="Email Address">
-    </div>
-    <div class="form-group">
-        <input class="form-control" type="password" name="password" placeholder="Password">
-    </div>
-    <div class="form-group">
-        <input class="form-control" type="password" name="confirmation" placeholder="Confirm Password">
-    </div>
-    <input class="btn btn-primary" type="submit" value="Register">
-</form>
-
-Already have an account? <a href="{% url 'login' %}">Log In here.</a>
+</div>
+{% endblock %}
