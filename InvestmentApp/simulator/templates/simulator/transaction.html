@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dodaj transakcję</title>
+</head>
+<body>
+    <h1>Dodaj transakcję</h1>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    <form method="POST">
+        {% csrf_token %}
+        <label>Symbol akcji:</label>
+        <input type="text" name="symbol" required><br>
+        <label>Liczba akcji:</label>
+        <input type="number" name="quantity" required><br>
+        <label>Cena za akcję:</label>
+        <input type="number" name="price" step="0.01" required><br>
+        <button type="submit">Kup</button>
+    </form>
+    <a href="{% url 'portfolio' %}">Wróć do portfolio</a>
+</body>
+</html>

@@ -1,0 +1,9 @@
+<h1>Portfolio</h1>
+<p>Saldo: {{ profile.balance }}</p>
+<h2>Transakcje:</h2>
+<ul>
+    {% for transaction in transactions %}
+        <li>{{ transaction.stock.symbol }} - {{ transaction.quantity }} @ {{ transaction.price }}</li>
+    {% endfor %}
+</ul>
+<a href="{% url 'transaction' %}">Dodaj transakcję</a>
